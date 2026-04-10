@@ -1,0 +1,12 @@
+# Binarios compilados
+dwm
+drw.o
+dwm.o
+util.o
+
+# Archivo de distribución
+*.tar.gz
+
+# Archivos de conflictos de parches
+*.rej
+*.orig
