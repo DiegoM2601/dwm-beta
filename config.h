@@ -121,6 +121,13 @@ static const Key keys[] = {
 	{ 0, XF86XK_AudioMute,        spawn, SHCMD("pamixer -t") },
 	{ 0, XF86XK_MonBrightnessUp,   spawn, SHCMD("brightnessctl set 10%+") },
         { 0, XF86XK_MonBrightnessDown, spawn, SHCMD("brightnessctl set 10%-") },
+	/* atajos personalizados */
+	{ 0, XK_Print,                 spawn, SHCMD("screenshot-full") },
+	{ ControlMask, XK_Print,  spawn, SHCMD("screenshot-manual") },
+	{ ShiftMask,   XK_Print,  spawn, SHCMD("screenshot-manual-delay") },
+	{ MODKEY|ShiftMask,             XK_p,      spawn, SHCMD("espanso-toggle") },
+	{ ControlMask|Mod1Mask, XK_t, spawn, SHCMD("terminator") },
+	{ Mod4Mask, XK_e, spawn, SHCMD("thunar") },
 };
 
 /* button definitions */
