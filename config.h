@@ -128,6 +128,7 @@ static const Key keys[] = {
 	{ MODKEY|ShiftMask,             XK_p,      spawn, SHCMD("espanso-toggle") },
 	{ ControlMask|Mod1Mask, XK_t, spawn, SHCMD("terminator") },
 	{ Mod4Mask, XK_e, spawn, SHCMD("thunar") },
+	{ MODKEY, XK_Escape, spawn, SHCMD("screenlock") },
 };
 
 /* button definitions */
