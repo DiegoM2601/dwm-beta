@@ -41,6 +41,7 @@
 #include <X11/extensions/Xinerama.h>
 #endif /* XINERAMA */
 #include <X11/Xft/Xft.h>
+#include <time.h>
 
 #include "drw.h"
 #include "util.h"
@@ -135,6 +136,9 @@ struct Monitor {
 	int by;               /* bar geometry */
 	int mx, my, mw, mh;   /* screen size */
 	int wx, wy, ww, wh;   /* window area  */
+	int altTabN;		  /* move that many clients forward */
+	int nTabs;			  /* number of active clients in tag */
+	int isAlt; 			  /* 1,0 */
 	unsigned int seltags;
 	unsigned int sellt;
 	unsigned int tagset[2];
@@ -143,6 +147,7 @@ struct Monitor {
 	Client *clients;
 	Client *sel;
 	Client *stack;
+	Client ** altsnext; /* array of all clients in the tag */
 	Monitor *next;
 	Window barwin;
 	const Layout *lt[2];
@@ -266,6 +271,8 @@ static int xerror(Display *dpy, XErrorEvent *ee);
 static int xerrordummy(Display *dpy, XErrorEvent *ee);
 static int xerrorstart(Display *dpy, XErrorEvent *ee);
 static void zoom(const Arg *arg);
+void altTabStart(const Arg *arg);
+static void altTabEnd();
 
 /* variables */
 static const char autostartblocksh[] = "autostart_blocking.sh";
@@ -530,6 +537,7 @@ cleanup(void)
 	Monitor *m;
 	size_t i;
 
+	altTabEnd();
 	view(&a);
 	selmon->lt[selmon->sellt] = &foo;
 	for (m = mons; m; m = m->next)
@@ -754,6 +762,7 @@ createmon(void)
 	m->topbar = topbar;
 	m->lt[0] = &layouts[0];
 	m->lt[1] = &layouts[1 % LENGTH(layouts)];
+	m->nTabs = 0;
 	strncpy(m->ltsymbol, layouts[0].symbol, sizeof m->ltsymbol);
 	m->pertag = ecalloc(1, sizeof(Pertag));
 	m->pertag->curtag = m->pertag->prevtag = 1;
@@ -1992,6 +2001,132 @@ spawn(const Arg *arg)
 
 		execvp(((char **)arg->v)[0], (char **)arg->v);
 		die("dwm: execvp '%s' failed:", ((char **)arg->v)[0]);
+	}
+}
+
+void
+altTab()
+{
+	/* move to next window */
+	if (selmon->sel != NULL && selmon->sel->snext != NULL) {
+		selmon->altTabN++;
+		if (selmon->altTabN >= selmon->nTabs)
+			selmon->altTabN = 0; /* reset altTabN */
+
+		focus(selmon->altsnext[selmon->altTabN]);
+		restack(selmon);
+	}
+}
+
+void
+altTabEnd()
+{
+	if (selmon->isAlt == 0)
+		return;
+
+	/*
+	* move all clients between 1st and choosen position,
+	* one down in stack and put choosen client to the first position
+	* so they remain in right order for the next time that alt-tab is used
+	*/
+	if (selmon->nTabs > 1) {
+		if (selmon->altTabN != 0) { /* if user picked original client do nothing */
+			Client *buff = selmon->altsnext[selmon->altTabN];
+			if (selmon->altTabN > 1)
+				for (int i = selmon->altTabN;i > 0;i--)
+					selmon->altsnext[i] = selmon->altsnext[i - 1];
+			else /* swap them if there are just 2 clients */
+				selmon->altsnext[selmon->altTabN] = selmon->altsnext[0];
+			selmon->altsnext[0] = buff;
+		}
+
+		/* restack clients */
+		for (int i = selmon->nTabs - 1;i >= 0;i--) {
+			focus(selmon->altsnext[i]);
+			restack(selmon);
+		}
+
+		free(selmon->altsnext); /* free list of clients */
+	}
+
+	/* reset state */
+	selmon->isAlt = 0;
+	selmon->nTabs = 0;
+}
+
+void
+altTabStart(const Arg *arg)
+{
+	selmon->altsnext = NULL;
+
+	if (selmon->isAlt == 1) {
+		altTabEnd();
+	} else {
+		selmon->isAlt = 1;
+		selmon->altTabN = 0;
+
+  		Client *c;
+  		Monitor *m = selmon;
+
+		m->nTabs = 0;
+		for(c = m->clients; c; c = c->next) { /* count clients */
+			if(!ISVISIBLE(c)) continue;
+			/* if (HIDDEN(c)) continue; uncomment if you're using awesomebar patch */
+
+			++m->nTabs;
+		}
+
+		if (m->nTabs > 0) {
+			m->altsnext = (Client **) malloc(m->nTabs * sizeof(Client *));
+
+			int listIndex = 0;
+			for(c = m->stack; c; c = c->snext) { /* add clients to the list */
+				if(!ISVISIBLE(c)) continue;
+				/* if (HIDDEN(c)) continue; uncomment if you're using awesomebar patch */
+
+				m->altsnext[listIndex++] = c;
+			}
+
+			struct timespec ts = { .tv_sec = 0, .tv_nsec = 1000000 };
+
+			/* grab keyboard (take all input from keyboard) */
+			int grabbed = 1;
+			for (int i = 0;i < 1000;i++) {
+				if (XGrabKeyboard(dpy, DefaultRootWindow(dpy), True, GrabModeAsync, GrabModeAsync, CurrentTime) == GrabSuccess)
+					break;
+				nanosleep(&ts, NULL);
+				if (i == 1000 - 1)
+					grabbed = 0;
+			}
+
+			XEvent event;
+			altTab();
+			if (grabbed == 0) {
+				altTabEnd();
+			} else {
+				while (grabbed) {
+					XNextEvent(dpy, &event);
+					if (event.type == KeyPress || event.type == KeyRelease) {
+						if (event.type == KeyRelease && event.xkey.keycode == tabModKey) { /* if super key is released break cycle */
+							break;
+						} else if (event.type == KeyPress) {
+							if (event.xkey.keycode == tabCycleKey) {/* if XK_s is pressed move to the next window */
+								altTab();
+							}
+						}
+					}
+				}
+
+				c = selmon->sel;
+				altTabEnd(); /* end the alt-tab functionality */
+				/* XUngrabKeyboard(display, time); just a reference */
+				XUngrabKeyboard(dpy, CurrentTime); /* stop taking all input from keyboard */
+				focus(c);
+				restack(selmon);
+			}
+		} else {
+			altTabEnd(); /* end the alt-tab functionality */
+		}
 	}
 }
 
