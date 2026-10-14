@@ -132,6 +132,7 @@ static const Key keys[] = {
 	{ ControlMask|Mod1Mask, XK_t, spawn, SHCMD("terminator") },
 	{ Mod4Mask, XK_e, spawn, SHCMD("thunar") },
 	{ MODKEY, XK_Escape, spawn, SHCMD("screenlock") },
+	{ ControlMask|ShiftMask, XK_Print, spawn, SHCMD("ocr-screen") },
 };
 
 /* button definitions */
